@@ -107,29 +107,37 @@
     <script type="module">
         // Import Firebase components
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- Configuración y Constantes ---
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-fifa-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // ====================================================================================
+        // === CONFIGURACIÓN MANUAL DE FIREBASE (¡Con tus credenciales reales!) ==============
+        // ====================================================================================
+        
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyDQEYZUd4wcX63V606zRPCNCbtkMdLIDUk", 
+            authDomain: "marcador-fifa-goles.firebaseapp.com",
+            projectId: "marcador-fifa-goles",
+            storageBucket: "marcador-fifa-goles.firebasestorage.app",
+            messagingSenderId: "130900779029",
+            appId: "1:130900779029:web:cf142f37b691bab5d02e1c"
+        };
 
+        const firebaseConfig = FIREBASE_CONFIG; 
+        const appId = firebaseConfig.projectId; // Usamos el Project ID como App ID
+        
         let db;
         let auth;
         let userId = 'anon_user';
 
-        // Nombres fijos de jugadores
+        // --- Constantes ---
         const PLAYERS = ["Matheo", "Benja", "Facundo", "Denis", "Edgar", "Joaquin"];
-        // Rutas de documentos de Firestore
         const LEADERBOARD_DOC_PATH = 'leaderboard_totals';
         const CURRENT_MATCH_DOC_PATH = 'current_match_state';
 
         // --- Estado Global de la Aplicación ---
-        let matchData = null; // Contiene status, teamA, teamB, scoreA, scoreB
-        let leaderboardData = {}; // Contiene los totales de goles de cada jugador
-
-        // Estado local para la selección de equipos (solo se usa en modo SETUP)
+        let matchData = null; 
+        let leaderboardData = {}; 
         let localSelections = {
             teamA: [],
             teamB: []
@@ -138,53 +146,51 @@
         // --- Inicialización Firebase ---
 
         async function setupFirebase() {
-            if (!firebaseConfig) {
-                document.getElementById('loading-message').textContent = "Error: La configuración de Firebase no está disponible.";
-                return;
-            }
             
             try {
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
-
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                
+                // NOTA: EL ERROR INDICA QUE FALLA EL INICIO DE SESIÓN.
+                // DEBES VERIFICAR QUE LA AUTENTICACIÓN ANÓNIMA ESTÉ HABILITADA
+                // EN TU PROYECTO FIREBASE (sección Authentication -> Sign-in Method).
+                
+                await signInAnonymously(auth);
 
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
-                        userId = user.uid || crypto.randomUUID();
+                        // Usamos el UID real del usuario anónimo para la seguridad de la data
+                        userId = user.uid; 
                         listenForData();
                         initializeLeaderboard();
                         initializeCurrentMatch();
                     } else {
-                        userId = crypto.randomUUID();
+                        // Este path no debería ocurrir después del signInAnonymously
+                        userId = crypto.randomUUID(); 
                         document.getElementById('loading-message').textContent = 'Error de autenticación. Recargando...';
                     }
                 });
 
             } catch (error) {
                 console.error("Error setting up Firebase:", error);
-                document.getElementById('loading-message').textContent = `Error de conexión: ${error.message}`;
+                document.getElementById('loading-message').textContent = `Error de conexión: ${error.message}. Asegúrate de que la Autenticación Anónima y las reglas de Firestore permitan la escritura.`;
             }
         }
 
-        // --- Referencias y Inicialización de Documentos ---
+        // --- Rutas de Documentos (Usando tu Project ID) ---
+        // La ruta es: /artifacts/{tu_project_id}/public/data/fifa_tracker/{documento}
 
         function getLeaderboardDocRef() {
-            // Ruta pública para datos compartidos
             return doc(db, 'artifacts', appId, 'public', 'data', 'fifa_tracker', LEADERBOARD_DOC_PATH);
         }
 
         function getCurrentMatchDocRef() {
-            // Ruta pública para datos compartidos
             return doc(db, 'artifacts', appId, 'public', 'data', 'fifa_tracker', CURRENT_MATCH_DOC_PATH);
         }
-        
-        // Crea el documento de la tabla general si no existe
+
+        // El resto de la lógica de la aplicación se mantiene igual:
+
         async function initializeLeaderboard() {
             const leaderboardRef = getLeaderboardDocRef();
             const docSnap = await getDoc(leaderboardRef);
@@ -198,29 +204,25 @@
             }
         }
 
-        // Crea el documento del partido actual si no existe
         async function initializeCurrentMatch() {
             const matchRef = getCurrentMatchDocRef();
             const docSnap = await getDoc(matchRef);
 
             if (!docSnap.exists()) {
                  const initialState = {
-                    status: 'SETUP', // 'SETUP' o 'ACTIVE'
+                    status: 'SETUP', 
                     teamA: [],
                     teamB: [],
                     scoreA: 0,
                     scoreB: 0,
                     date: Date.now(),
-                    goalsScored: {} // { 'Jugador': X }
+                    goalsScored: {} 
                 };
                 await setDoc(matchRef, initialState);
             }
         }
 
-        // --- Listener de Datos en Tiempo Real ---
-
         function listenForData() {
-            // Listener para la Tabla General (Leaderboard)
             onSnapshot(getLeaderboardDocRef(), (doc) => {
                 if (doc.exists()) {
                     leaderboardData = doc.data() || {};
@@ -230,14 +232,11 @@
                 }
             }, (error) => console.error("Error al escuchar Leaderboard:", error));
 
-            // Listener para el Partido Actual (Current Match)
             onSnapshot(getCurrentMatchDocRef(), (doc) => {
                 if (doc.exists()) {
                     matchData = doc.data();
                     
-                    // Sincronizar las selecciones locales con la data de Firebase si estamos en SETUP
                     if (matchData.status === 'SETUP') {
-                        // Clonamos los arrays para evitar mutaciones directas
                         localSelections.teamA = Array.isArray(matchData.teamA) ? [...matchData.teamA] : [];
                         localSelections.teamB = Array.isArray(matchData.teamB) ? [...matchData.teamB] : [];
                     }
@@ -248,14 +247,7 @@
             }, (error) => console.error("Error al escuchar Partido Actual:", error));
         }
 
-
-        // --- Lógica del Partido ---
         
-        /**
-         * Maneja la selección de un jugador.
-         * Lógica de flujo: LIBRE -> EQUIPO A -> EQUIPO B -> LIBRE
-         * @param {string} playerName - Nombre del jugador.
-         */
         window.togglePlayerSelection = function(playerName) {
             const teamA = localSelections.teamA;
             const teamB = localSelections.teamB;
@@ -264,30 +256,22 @@
             const indexB = teamB.indexOf(playerName);
 
             if (indexA > -1) {
-                // 1. Está en Equipo A -> Mover a Equipo B (si hay espacio)
                 teamA.splice(indexA, 1);
-                if (teamB.length < 3) { // Máximo 3 jugadores por equipo
+                if (teamB.length < 3) { 
                     teamB.push(playerName);
-                } else {
-                    // Si Equipo B está lleno, va a LIBRE (ya lo quitamos de A)
-                }
+                } 
 
             } else if (indexB > -1) {
-                // 2. Está en Equipo B -> Mover a LIBRE
                 teamB.splice(indexB, 1);
             } else {
-                // 3. Está en LIBRE -> Mover a Equipo A (si hay espacio)
-                if (teamA.length < 3) { // Máximo 3 jugadores por equipo
+                if (teamA.length < 3) { 
                     teamA.push(playerName);
                 }
             }
             
-            updateUI(); // Forzamos la actualización de la UI
+            updateUI(); 
         }
 
-        /**
-         * Transiciona de SETUP a ACTIVE.
-         */
         window.startMatch = async function() {
             if (!matchData || localSelections.teamA.length === 0 || localSelections.teamB.length === 0) {
                 alertUser("Error", "Debes seleccionar al menos un jugador en cada equipo para iniciar el partido.");
@@ -296,28 +280,22 @@
 
             const matchRef = getCurrentMatchDocRef();
             try {
-                // Inicializa el registro de goles individuales para el partido
                 const initialGoals = PLAYERS.reduce((acc, p) => ({ ...acc, [p]: 0 }), {});
 
                 await updateDoc(matchRef, {
                     status: 'ACTIVE',
-                    // Guardamos la selección local al iniciar el partido
                     teamA: localSelections.teamA,
                     teamB: localSelections.teamB,
                     scoreA: 0,
                     scoreB: 0,
                     date: Date.now(),
-                    goalsScored: initialGoals // Reiniciar goles individuales
+                    goalsScored: initialGoals 
                 });
             } catch (e) {
                 console.error("Error al iniciar el partido:", e);
             }
         }
         
-        /**
-         * Muestra el modal para seleccionar el goleador del equipo.
-         * @param {string} team - 'A' o 'B'.
-         */
         window.promptForScorer = function(team) {
             const teamPlayers = team === 'A' ? matchData.teamA : matchData.teamB;
             const title = team === 'A' ? "EQUIPO A: ¿Quién anotó?" : "EQUIPO B: ¿Quién anotó?";
@@ -346,11 +324,6 @@
             document.getElementById('scorer-modal-backdrop').classList.remove('flex');
         }
 
-        /**
-         * Procesa la selección del goleador y actualiza el marcador y el registro de goles.
-         * @param {string} scorerName - Nombre del jugador que anotó.
-         * @param {string} team - 'A' o 'B'.
-         */
         window.handleScorerSelection = async function(scorerName, team) {
             hideScorerModal();
 
@@ -358,7 +331,6 @@
             const matchRef = getCurrentMatchDocRef();
 
             try {
-                // Usamos una transacción para asegurar la consistencia del conteo de goles
                 await runTransaction(db, async (transaction) => {
                     const matchDoc = await transaction.get(matchRef);
                     if (!matchDoc.exists()) {
@@ -368,12 +340,10 @@
                     const currentData = matchDoc.data();
                     const newTeamScore = currentData[scoreField] + 1;
                     
-                    // Actualizar goles individuales en el matchData
                     const newGoalsScored = { ...currentData.goalsScored };
                     const currentGoals = newGoalsScored[scorerName] || 0;
                     newGoalsScored[scorerName] = currentGoals + 1;
 
-                    // Actualizar el documento del partido
                     transaction.update(matchRef, {
                         [scoreField]: newTeamScore,
                         goalsScored: newGoalsScored
@@ -385,15 +355,11 @@
             }
         }
         
-        /**
-         * Finaliza el partido, actualiza el leaderboard con los goles individuales y reinicia el match state.
-         */
         window.endMatchAndSave = async function() {
             const goalsScoredInMatch = matchData.goalsScored || {};
             const leaderboardRef = getLeaderboardDocRef();
             
             try {
-                // 1. Usamos una transacción para actualizar el Leaderboard (permanente)
                 await runTransaction(db, async (transaction) => {
                     const leaderboardDoc = await transaction.get(leaderboardRef);
                     if (!leaderboardDoc.exists()) {
@@ -403,21 +369,17 @@
                     const currentLeaderboard = leaderboardDoc.data();
                     const goalsToUpdate = { ...currentLeaderboard };
 
-                    // Sumar los goles individuales del partido a los totales
                     for (const player in goalsScoredInMatch) {
                         const matchGoals = goalsScoredInMatch[player] || 0;
                         const currentTotal = goalsToUpdate[player] || 0;
-                        // Solo actualizamos si el jugador realmente anotó en el partido
                         if (matchGoals > 0) {
                             goalsToUpdate[player] = currentTotal + matchGoals;
                         }
                     }
 
-                    // Actualizar el documento de Leaderboard
                     transaction.update(leaderboardRef, goalsToUpdate);
                 });
 
-                // 2. Reiniciar Match State
                 const matchRef = getCurrentMatchDocRef();
                 await setDoc(matchRef, {
                     status: 'SETUP',
@@ -429,7 +391,6 @@
                     goalsScored: {}
                 });
                 
-                // Resetear selecciones locales
                 localSelections.teamA = [];
                 localSelections.teamB = [];
                 hideModal();
@@ -441,18 +402,13 @@
             }
         }
         
-        /**
-         * Resetea la Tabla General y el estado del partido actual.
-         */
         window.resetAllData = async function() {
-            // Reiniciar Leaderboard
             const initialScores = PLAYERS.reduce((acc, player) => {
                 acc[player] = 0;
                 return acc;
             }, {});
             await setDoc(getLeaderboardDocRef(), initialScores);
             
-            // Reiniciar Match State
             await setDoc(getCurrentMatchDocRef(), {
                 status: 'SETUP',
                 teamA: [],
@@ -463,7 +419,6 @@
                 goalsScored: {}
             });
 
-            // Resetear selecciones locales
             localSelections.teamA = [];
             localSelections.teamB = [];
             hideModal();
@@ -473,9 +428,6 @@
 
         // --- Funciones de Renderizado UI ---
         
-        /**
-         * Función principal para renderizar la UI basado en el estado del partido.
-         */
         function updateUI() {
             const loadingMessage = document.getElementById('loading-message');
             const matchContainer = document.getElementById('match-container');
@@ -490,7 +442,6 @@
                 return;
             }
 
-            // 1. Renderizar el área principal (SETUP o ACTIVE)
             if (matchData.status === 'SETUP') {
                 matchContainer.innerHTML = renderSetupView();
                 dynamicButtonsContainer.innerHTML = renderSetupFooter();
@@ -499,11 +450,9 @@
                 dynamicButtonsContainer.innerHTML = renderActiveMatchFooter();
             }
 
-            // 2. Renderizar la tabla general (siempre visible)
             renderLeaderboard();
         }
 
-        // Renderiza la vista de selección de equipos
         function renderSetupView() {
             const teamA = localSelections.teamA;
             const teamB = localSelections.teamB;
@@ -512,19 +461,16 @@
             const isPlayerInTeamB = (player) => teamB.includes(player);
             const isPlayerFree = (player) => !isPlayerInTeamA(player) && !isPlayerInTeamB(player);
             
-            // Renderiza los botones de jugadores libres
             const playersFreeHtml = PLAYERS.filter(isPlayerFree).map(p => 
                 `<button onclick="togglePlayerSelection('${p}')" class="p-3 bg-gray-100 text-gray-600 hover:bg-gray-200 rounded-xl font-semibold transition">${p}</button>`
             ).join('');
             
-            // Renderiza los jugadores del Equipo A
             const playersAHtml = teamA.map(p => 
                 `<button onclick="togglePlayerSelection('${p}')" class="player-button bg-blue-600 hover:bg-red-500 text-white shadow-lg">
                     ${p} <span class="text-xs opacity-75">(Toca para mover a B)</span>
                 </button>`
             ).join('');
             
-            // Renderiza los jugadores del Equipo B
             const playersBHtml = teamB.map(p => 
                 `<button onclick="togglePlayerSelection('${p}')" class="player-button bg-red-600 hover:bg-gray-500 text-white shadow-lg">
                     ${p} <span class="text-xs opacity-75">(Toca para liberar)</span>
@@ -562,7 +508,6 @@
             `;
         }
 
-        // Renderiza la vista de partido activo
         function renderActiveMatchView() {
             const teamA = matchData.teamA.join(', ');
             const teamB = matchData.teamB.join(', ');
@@ -593,7 +538,6 @@
             `;
         }
         
-        // Renderiza el footer en modo SETUP
         function renderSetupFooter() {
             const canStart = localSelections.teamA.length > 0 && localSelections.teamB.length > 0;
             const buttonClass = canStart 
@@ -613,7 +557,6 @@
             `;
         }
 
-        // Renderiza el footer en modo ACTIVE
         function renderActiveMatchFooter() {
             return `
                 <button onclick="showConfirmReset('match')"
@@ -623,7 +566,6 @@
             `;
         }
 
-        // Renderiza la tabla de totales
         function renderLeaderboard() {
             const container = document.getElementById('leaderboard-container');
             const scoresArray = PLAYERS.map(name => ({
@@ -658,7 +600,7 @@
         }
 
         
-        // --- Modal Control Functions (Custom Alert/Confirm) ---
+        // --- Modal Control Functions ---
         
         const modalBackdrop = document.getElementById('modal-backdrop');
         const modalConfirmButton = document.getElementById('modal-confirm-button');
@@ -669,7 +611,7 @@
 
         window.showModal = function(title, htmlContent, onConfirm, isAlert = false) {
             modalTitle.textContent = title;
-            modalText.innerHTML = htmlContent; // Usar innerHTML para aceptar la tabla
+            modalText.innerHTML = htmlContent; 
             modalConfirmButton.onclick = onConfirm;
             
             if (isAlert) {
@@ -702,24 +644,16 @@
             modalBackdrop.onclick = null;
         }
         
-        /**
-         * Muestra un mensaje simple usando el modal.
-         */
         function alertUser(title, text) {
             window.showModal(title, text, hideModal, true);
         }
 
-        /**
-         * Muestra el modal de confirmación, incluyendo el resumen de goles.
-         * @param {string} type - 'match' o 'all'.
-         */
         window.showConfirmReset = function(type) {
             if (type === 'match') {
                 const totalGoles = matchData.scoreA + matchData.scoreB;
 
                 let summaryHtml = `<p class="mb-4">El marcador final fue: <strong>${matchData.scoreA} - ${matchData.scoreB}</strong>. Se sumarán <strong>${totalGoles} goles</strong> a la tabla general de la siguiente manera:</p>`;
 
-                // Crear la tabla de resumen de goles individuales
                 const goalsSummary = Object.entries(matchData.goalsScored || {})
                     .filter(([, score]) => score > 0)
                     .sort(([, scoreA], [, scoreB]) => scoreB - scoreA);
