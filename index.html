@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marcador FIFA Goles</title>
+    <!-- Carga de Tailwind CSS para estilos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carga de la fuente Inter -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9; /* Slate 100 */
+        }
+        /* Estilo para el botón de gol con animación al presionar */
+        .goal-button {
+            transition: transform 0.1s ease, background-color 0.2s;
+        }
+        .goal-button:active {
+            transform: scale(0.95);
+            box-shadow: none;
+        }
+        /* Clases específicas para el modo partido activo */
+        .team-score-button {
+            height: 40vh; /* Alto relativo para pantallas móviles */
+            min-height: 200px;
+            width: 100%;
+            transition: background-color 0.3s;
+        }
+        /* Estilo para los botones de jugador */
+        .player-button {
+            padding: 12px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1.125rem;
+            transition: all 0.15s ease;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-4 pb-20">
+
+    <!-- Header y Título -->
+    <header class="w-full max-w-md mb-6 p-4 bg-white rounded-xl shadow-lg text-center">
+        <h1 class="text-3xl font-extrabold text-green-700">Goles FIFA ⚽</h1>
+        <p class="text-gray-500 mt-1">Modo: Partido en Curso</p>
+    </header>
+
+    <!-- Contenedor Dinámico del Partido (SETUP o ACTIVE) -->
+    <main class="w-full max-w-md space-y-4 flex-grow">
+        <!-- Mensaje de Carga (siempre visible hasta que se carga la data) -->
+        <div id="loading-message" class="text-center p-4 text-gray-500 bg-white rounded-lg shadow">
+            Cargando datos y estado del partido...
+        </div>
+        
+        <!-- Contenedor Principal del Partido (cambia entre SETUP y ACTIVE) -->
+        <div id="match-container" class="space-y-4">
+            <!-- UI dinámico inyectado aquí -->
+        </div>
+
+        <!-- Título de la Tabla General -->
+        <h2 class="text-2xl font-bold text-gray-700 pt-6">Tabla General (Totales)</h2>
+        
+        <!-- Contenedor de la Tabla General (Leaderboard) -->
+        <div id="leaderboard-container" class="space-y-3 pb-4">
+            <!-- La tabla de clasificación se renderizará aquí -->
+        </div>
+    </main>
+
+    <!-- Sección de Controles (Botones de Reset y Fin de Partido) -->
+    <footer id="footer-controls" class="fixed bottom-0 w-full max-w-md p-4 bg-gray-50 border-t rounded-t-xl shadow-2xl">
+        <!-- Botones dinámicos (Fin de Partido o Reiniciar) -->
+        <div id="dynamic-buttons">
+            <!-- Botones se inyectan aquí -->
+        </div>
+    </footer>
+
+    <!-- Modal Personalizado para Confirmación (y Alertas/Mensajes) -->
+    <div id="modal-backdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
+        <div id="modal-content" class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-xs transform scale-100 transition-transform duration-300">
+            <h3 class="text-xl font-bold mb-4" id="modal-title">Confirmar</h3>
+            <!-- El texto del modal puede ser HTML para incluir la tabla de resumen -->
+            <div class="mb-6 text-gray-700" id="modal-text"></div>
+            <div class="flex justify-end space-x-3">
+                <button onclick="hideModal()" class="px-4 py-2 text-gray-600 bg-gray-200 rounded-lg hover:bg-gray-300 transition" id="modal-cancel-button">Cancelar</button>
+                <button id="modal-confirm-button" class="px-4 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700 transition font-medium">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Selección de Goleador -->
+    <div id="scorer-modal-backdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center p-4 z-50">
+        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-xs">
+            <h3 class="text-xl font-bold mb-4 text-center" id="scorer-modal-title">¿Quién anotó el gol?</h3>
+            <div id="scorer-buttons" class="space-y-3">
+                <!-- Los botones de los jugadores se insertarán aquí -->
+            </div>
+            <button onclick="hideScorerModal()" class="mt-4 w-full px-4 py-2 text-gray-600 bg-gray-200 rounded-lg hover:bg-gray-300 transition font-medium">Cancelar</button>
+        </div>
+    </div>
+
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        // Import Firebase components
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Configuración y Constantes ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-fifa-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db;
+        let auth;
+        let userId = 'anon_user';
+
+        // Nombres fijos de jugadores
+        const PLAYERS = ["Matheo", "Benja", "Facundo", "Denis", "Edgar", "Joaquin"];
+        // Rutas de documentos de Firestore
+        const LEADERBOARD_DOC_PATH = 'leaderboard_totals';
+        const CURRENT_MATCH_DOC_PATH = 'current_match_state';
+
+        // --- Estado Global de la Aplicación ---
+        let matchData = null; // Contiene status, teamA, teamB, scoreA, scoreB
+        let leaderboardData = {}; // Contiene los totales de goles de cada jugador
+
+        // Estado local para la selección de equipos (solo se usa en modo SETUP)
+        let localSelections = {
+            teamA: [],
+            teamB: []
+        };
+
+        // --- Inicialización Firebase ---
+
+        async function setupFirebase() {
+            if (!firebaseConfig) {
+                document.getElementById('loading-message').textContent = "Error: La configuración de Firebase no está disponible.";
+                return;
+            }
+            
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid || crypto.randomUUID();
+                        listenForData();
+                        initializeLeaderboard();
+                        initializeCurrentMatch();
+                    } else {
+                        userId = crypto.randomUUID();
+                        document.getElementById('loading-message').textContent = 'Error de autenticación. Recargando...';
+                    }
+                });
+
+            } catch (error) {
+                console.error("Error setting up Firebase:", error);
+                document.getElementById('loading-message').textContent = `Error de conexión: ${error.message}`;
+            }
+        }
+
+        // --- Referencias y Inicialización de Documentos ---
+
+        function getLeaderboardDocRef() {
+            // Ruta pública para datos compartidos
+            return doc(db, 'artifacts', appId, 'public', 'data', 'fifa_tracker', LEADERBOARD_DOC_PATH);
+        }
+
+        function getCurrentMatchDocRef() {
+            // Ruta pública para datos compartidos
+            return doc(db, 'artifacts', appId, 'public', 'data', 'fifa_tracker', CURRENT_MATCH_DOC_PATH);
+        }
+        
+        // Crea el documento de la tabla general si no existe
+        async function initializeLeaderboard() {
+            const leaderboardRef = getLeaderboardDocRef();
+            const docSnap = await getDoc(leaderboardRef);
+
+            if (!docSnap.exists()) {
+                const initialScores = PLAYERS.reduce((acc, player) => {
+                    acc[player] = 0;
+                    return acc;
+                }, {});
+                await setDoc(leaderboardRef, initialScores);
+            }
+        }
+
+        // Crea el documento del partido actual si no existe
+        async function initializeCurrentMatch() {
+            const matchRef = getCurrentMatchDocRef();
+            const docSnap = await getDoc(matchRef);
+
+            if (!docSnap.exists()) {
+                 const initialState = {
+                    status: 'SETUP', // 'SETUP' o 'ACTIVE'
+                    teamA: [],
+                    teamB: [],
+                    scoreA: 0,
+                    scoreB: 0,
+                    date: Date.now(),
+                    goalsScored: {} // { 'Jugador': X }
+                };
+                await setDoc(matchRef, initialState);
+            }
+        }
+
+        // --- Listener de Datos en Tiempo Real ---
+
+        function listenForData() {
+            // Listener para la Tabla General (Leaderboard)
+            onSnapshot(getLeaderboardDocRef(), (doc) => {
+                if (doc.exists()) {
+                    leaderboardData = doc.data() || {};
+                    updateUI();
+                } else {
+                    initializeLeaderboard();
+                }
+            }, (error) => console.error("Error al escuchar Leaderboard:", error));
+
+            // Listener para el Partido Actual (Current Match)
+            onSnapshot(getCurrentMatchDocRef(), (doc) => {
+                if (doc.exists()) {
+                    matchData = doc.data();
+                    
+                    // Sincronizar las selecciones locales con la data de Firebase si estamos en SETUP
+                    if (matchData.status === 'SETUP') {
+                        // Clonamos los arrays para evitar mutaciones directas
+                        localSelections.teamA = Array.isArray(matchData.teamA) ? [...matchData.teamA] : [];
+                        localSelections.teamB = Array.isArray(matchData.teamB) ? [...matchData.teamB] : [];
+                    }
+                    updateUI();
+                } else {
+                    initializeCurrentMatch();
+                }
+            }, (error) => console.error("Error al escuchar Partido Actual:", error));
+        }
+
+
+        // --- Lógica del Partido ---
+        
+        /**
+         * Maneja la selección de un jugador.
+         * Lógica de flujo: LIBRE -> EQUIPO A -> EQUIPO B -> LIBRE
+         * @param {string} playerName - Nombre del jugador.
+         */
+        window.togglePlayerSelection = function(playerName) {
+            const teamA = localSelections.teamA;
+            const teamB = localSelections.teamB;
+            
+            const indexA = teamA.indexOf(playerName);
+            const indexB = teamB.indexOf(playerName);
+
+            if (indexA > -1) {
+                // 1. Está en Equipo A -> Mover a Equipo B (si hay espacio)
+                teamA.splice(indexA, 1);
+                if (teamB.length < 3) { // Máximo 3 jugadores por equipo
+                    teamB.push(playerName);
+                } else {
+                    // Si Equipo B está lleno, va a LIBRE (ya lo quitamos de A)
+                }
+
+            } else if (indexB > -1) {
+                // 2. Está en Equipo B -> Mover a LIBRE
+                teamB.splice(indexB, 1);
+            } else {
+                // 3. Está en LIBRE -> Mover a Equipo A (si hay espacio)
+                if (teamA.length < 3) { // Máximo 3 jugadores por equipo
+                    teamA.push(playerName);
+                }
+            }
+            
+            updateUI(); // Forzamos la actualización de la UI
+        }
+
+        /**
+         * Transiciona de SETUP a ACTIVE.
+         */
+        window.startMatch = async function() {
+            if (!matchData || localSelections.teamA.length === 0 || localSelections.teamB.length === 0) {
+                alertUser("Error", "Debes seleccionar al menos un jugador en cada equipo para iniciar el partido.");
+                return;
+            }
+
+            const matchRef = getCurrentMatchDocRef();
+            try {
+                // Inicializa el registro de goles individuales para el partido
+                const initialGoals = PLAYERS.reduce((acc, p) => ({ ...acc, [p]: 0 }), {});
+
+                await updateDoc(matchRef, {
+                    status: 'ACTIVE',
+                    // Guardamos la selección local al iniciar el partido
+                    teamA: localSelections.teamA,
+                    teamB: localSelections.teamB,
+                    scoreA: 0,
+                    scoreB: 0,
+                    date: Date.now(),
+                    goalsScored: initialGoals // Reiniciar goles individuales
+                });
+            } catch (e) {
+                console.error("Error al iniciar el partido:", e);
+            }
+        }
+        
+        /**
+         * Muestra el modal para seleccionar el goleador del equipo.
+         * @param {string} team - 'A' o 'B'.
+         */
+        window.promptForScorer = function(team) {
+            const teamPlayers = team === 'A' ? matchData.teamA : matchData.teamB;
+            const title = team === 'A' ? "EQUIPO A: ¿Quién anotó?" : "EQUIPO B: ¿Quién anotó?";
+            const color = team === 'A' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700';
+
+            const scorerTitle = document.getElementById('scorer-modal-title');
+            const scorerButtonsContainer = document.getElementById('scorer-buttons');
+            const scorerModalBackdrop = document.getElementById('scorer-modal-backdrop');
+
+            scorerTitle.textContent = title;
+            
+            const buttonsHtml = teamPlayers.map(player => 
+                `<button onclick="handleScorerSelection('${player}', '${team}')" 
+                        class="w-full py-3 text-white font-bold rounded-lg shadow-md transition duration-150 ${color}">
+                    ${player}
+                </button>`
+            ).join('');
+
+            scorerButtonsContainer.innerHTML = buttonsHtml;
+            scorerModalBackdrop.classList.remove('hidden');
+            scorerModalBackdrop.classList.add('flex');
+        }
+
+        window.hideScorerModal = function() {
+            document.getElementById('scorer-modal-backdrop').classList.add('hidden');
+            document.getElementById('scorer-modal-backdrop').classList.remove('flex');
+        }
+
+        /**
+         * Procesa la selección del goleador y actualiza el marcador y el registro de goles.
+         * @param {string} scorerName - Nombre del jugador que anotó.
+         * @param {string} team - 'A' o 'B'.
+         */
+        window.handleScorerSelection = async function(scorerName, team) {
+            hideScorerModal();
+
+            const scoreField = team === 'A' ? 'scoreA' : 'scoreB';
+            const matchRef = getCurrentMatchDocRef();
+
+            try {
+                // Usamos una transacción para asegurar la consistencia del conteo de goles
+                await runTransaction(db, async (transaction) => {
+                    const matchDoc = await transaction.get(matchRef);
+                    if (!matchDoc.exists()) {
+                        throw "Document does not exist!";
+                    }
+
+                    const currentData = matchDoc.data();
+                    const newTeamScore = currentData[scoreField] + 1;
+                    
+                    // Actualizar goles individuales en el matchData
+                    const newGoalsScored = { ...currentData.goalsScored };
+                    const currentGoals = newGoalsScored[scorerName] || 0;
+                    newGoalsScored[scorerName] = currentGoals + 1;
+
+                    // Actualizar el documento del partido
+                    transaction.update(matchRef, {
+                        [scoreField]: newTeamScore,
+                        goalsScored: newGoalsScored
+                    });
+                });
+            } catch (e) {
+                console.error("Error al sumar gol (transacción fallida):", e);
+                alertUser("Error", "Hubo un error al registrar el gol. Intenta de nuevo.");
+            }
+        }
+        
+        /**
+         * Finaliza el partido, actualiza el leaderboard con los goles individuales y reinicia el match state.
+         */
+        window.endMatchAndSave = async function() {
+            const goalsScoredInMatch = matchData.goalsScored || {};
+            const leaderboardRef = getLeaderboardDocRef();
+            
+            try {
+                // 1. Usamos una transacción para actualizar el Leaderboard (permanente)
+                await runTransaction(db, async (transaction) => {
+                    const leaderboardDoc = await transaction.get(leaderboardRef);
+                    if (!leaderboardDoc.exists()) {
+                        throw "Leaderboard document does not exist!";
+                    }
+
+                    const currentLeaderboard = leaderboardDoc.data();
+                    const goalsToUpdate = { ...currentLeaderboard };
+
+                    // Sumar los goles individuales del partido a los totales
+                    for (const player in goalsScoredInMatch) {
+                        const matchGoals = goalsScoredInMatch[player] || 0;
+                        const currentTotal = goalsToUpdate[player] || 0;
+                        // Solo actualizamos si el jugador realmente anotó en el partido
+                        if (matchGoals > 0) {
+                            goalsToUpdate[player] = currentTotal + matchGoals;
+                        }
+                    }
+
+                    // Actualizar el documento de Leaderboard
+                    transaction.update(leaderboardRef, goalsToUpdate);
+                });
+
+                // 2. Reiniciar Match State
+                const matchRef = getCurrentMatchDocRef();
+                await setDoc(matchRef, {
+                    status: 'SETUP',
+                    teamA: [],
+                    teamB: [],
+                    scoreA: 0,
+                    scoreB: 0,
+                    date: Date.now(),
+                    goalsScored: {}
+                });
+                
+                // Resetear selecciones locales
+                localSelections.teamA = [];
+                localSelections.teamB = [];
+                hideModal();
+                alertUser("¡Partido Finalizado!", `El marcador final fue: ${matchData.scoreA} - ${matchData.scoreB}. Los goles individuales han sido sumados permanentemente.`);
+
+            } catch (e) {
+                 console.error("Error al finalizar partido (transacción fallida):", e);
+                 alertUser("Error", "Hubo un error al guardar los datos finales. Intenta de nuevo.");
+            }
+        }
+        
+        /**
+         * Resetea la Tabla General y el estado del partido actual.
+         */
+        window.resetAllData = async function() {
+            // Reiniciar Leaderboard
+            const initialScores = PLAYERS.reduce((acc, player) => {
+                acc[player] = 0;
+                return acc;
+            }, {});
+            await setDoc(getLeaderboardDocRef(), initialScores);
+            
+            // Reiniciar Match State
+            await setDoc(getCurrentMatchDocRef(), {
+                status: 'SETUP',
+                teamA: [],
+                teamB: [],
+                scoreA: 0,
+                scoreB: 0,
+                date: Date.now(),
+                goalsScored: {}
+            });
+
+            // Resetear selecciones locales
+            localSelections.teamA = [];
+            localSelections.teamB = [];
+            hideModal();
+            alertUser("Datos Reiniciados", "El marcador general y el partido actual se han reiniciado a cero.");
+        }
+
+
+        // --- Funciones de Renderizado UI ---
+        
+        /**
+         * Función principal para renderizar la UI basado en el estado del partido.
+         */
+        function updateUI() {
+            const loadingMessage = document.getElementById('loading-message');
+            const matchContainer = document.getElementById('match-container');
+            const dynamicButtonsContainer = document.getElementById('dynamic-buttons');
+
+            if (loadingMessage) {
+                 loadingMessage.classList.add('hidden');
+            }
+            
+            if (!matchData) {
+                matchContainer.innerHTML = `<p class="text-center text-red-500">Esperando datos de Firebase...</p>`;
+                return;
+            }
+
+            // 1. Renderizar el área principal (SETUP o ACTIVE)
+            if (matchData.status === 'SETUP') {
+                matchContainer.innerHTML = renderSetupView();
+                dynamicButtonsContainer.innerHTML = renderSetupFooter();
+            } else if (matchData.status === 'ACTIVE') {
+                matchContainer.innerHTML = renderActiveMatchView();
+                dynamicButtonsContainer.innerHTML = renderActiveMatchFooter();
+            }
+
+            // 2. Renderizar la tabla general (siempre visible)
+            renderLeaderboard();
+        }
+
+        // Renderiza la vista de selección de equipos
+        function renderSetupView() {
+            const teamA = localSelections.teamA;
+            const teamB = localSelections.teamB;
+
+            const isPlayerInTeamA = (player) => teamA.includes(player);
+            const isPlayerInTeamB = (player) => teamB.includes(player);
+            const isPlayerFree = (player) => !isPlayerInTeamA(player) && !isPlayerInTeamB(player);
+            
+            // Renderiza los botones de jugadores libres
+            const playersFreeHtml = PLAYERS.filter(isPlayerFree).map(p => 
+                `<button onclick="togglePlayerSelection('${p}')" class="p-3 bg-gray-100 text-gray-600 hover:bg-gray-200 rounded-xl font-semibold transition">${p}</button>`
+            ).join('');
+            
+            // Renderiza los jugadores del Equipo A
+            const playersAHtml = teamA.map(p => 
+                `<button onclick="togglePlayerSelection('${p}')" class="player-button bg-blue-600 hover:bg-red-500 text-white shadow-lg">
+                    ${p} <span class="text-xs opacity-75">(Toca para mover a B)</span>
+                </button>`
+            ).join('');
+            
+            // Renderiza los jugadores del Equipo B
+            const playersBHtml = teamB.map(p => 
+                `<button onclick="togglePlayerSelection('${p}')" class="player-button bg-red-600 hover:bg-gray-500 text-white shadow-lg">
+                    ${p} <span class="text-xs opacity-75">(Toca para liberar)</span>
+                </button>`
+            ).join('');
+
+            return `
+                <div class="space-y-4">
+                    <!-- Jugadores Libres -->
+                    ${playersFreeHtml.length > 0 ? `
+                        <div class="p-4 bg-gray-200 rounded-xl">
+                            <h3 class="font-bold text-gray-700 mb-2">Jugadores Libres (Toca para Equipo A):</h3>
+                            <div class="flex flex-wrap gap-2">
+                                ${playersFreeHtml}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <!-- Equipos Seleccionados -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <!-- Equipo A -->
+                        <div class="p-4 bg-blue-100 rounded-xl border-t-4 border-blue-500 shadow-md space-y-2">
+                            <h3 class="font-extrabold text-blue-700 text-xl text-center">EQUIPO A (${teamA.length})</h3>
+                            <p class="text-sm text-center text-blue-600 mb-3">Máx 3. Toca para mover a B.</p>
+                            ${playersAHtml.length > 0 ? playersAHtml : '<p class="text-center text-blue-500 p-3">Sin jugadores</p>'}
+                        </div>
+                        <!-- Equipo B -->
+                        <div class="p-4 bg-red-100 rounded-xl border-t-4 border-red-500 shadow-md space-y-2">
+                            <h3 class="font-extrabold text-red-700 text-xl text-center">EQUIPO B (${teamB.length})</h3>
+                            <p class="text-sm text-center text-red-600 mb-3">Máx 3. Toca para liberar.</p>
+                            ${playersBHtml.length > 0 ? playersBHtml : '<p class="text-center text-red-500 p-3">Sin jugadores</p>'}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Renderiza la vista de partido activo
+        function renderActiveMatchView() {
+            const teamA = matchData.teamA.join(', ');
+            const teamB = matchData.teamB.join(', ');
+            const scoreA = matchData.scoreA;
+            const scoreB = matchData.scoreB;
+
+            return `
+                <div class="flex flex-col md:flex-row space-y-3 md:space-y-0 md:space-x-3">
+                    <!-- Equipo A -->
+                    <button onclick="promptForScorer('A')" 
+                            class="team-score-button bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl shadow-xl p-4 flex flex-col items-center justify-center">
+                        <span class="text-2xl font-light opacity-80">EQUIPO A</span>
+                        <span class="text-lg font-medium mb-4">${teamA}</span>
+                        <span class="text-8xl font-extrabold">${scoreA}</span>
+                        <span class="text-base mt-4">Toca para anotar</span>
+                    </button>
+                    <!-- Separador -->
+                    <div class="text-3xl font-bold text-gray-600 hidden md:flex items-center justify-center">VS</div>
+                    <!-- Equipo B -->
+                    <button onclick="promptForScorer('B')" 
+                            class="team-score-button bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl shadow-xl p-4 flex flex-col items-center justify-center">
+                        <span class="text-2xl font-light opacity-80">EQUIPO B</span>
+                        <span class="text-lg font-medium mb-4">${teamB}</span>
+                        <span class="text-8xl font-extrabold">${scoreB}</span>
+                        <span class="text-base mt-4">Toca para anotar</span>
+                    </button>
+                </div>
+            `;
+        }
+        
+        // Renderiza el footer en modo SETUP
+        function renderSetupFooter() {
+            const canStart = localSelections.teamA.length > 0 && localSelections.teamB.length > 0;
+            const buttonClass = canStart 
+                ? 'bg-green-600 hover:bg-green-700' 
+                : 'bg-gray-400 cursor-not-allowed';
+            const action = canStart ? 'startMatch()' : '';
+
+            return `
+                <button onclick="${action}"
+                    class="w-full py-3 text-white font-bold rounded-lg shadow-md transition duration-150 ${buttonClass}">
+                    INICIAR PARTIDO
+                </button>
+                <button onclick="showConfirmReset('all')"
+                    class="w-full mt-2 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold rounded-lg transition duration-150">
+                    Reiniciar TODOS los datos (Leaderboard y Partido)
+                </button>
+            `;
+        }
+
+        // Renderiza el footer en modo ACTIVE
+        function renderActiveMatchFooter() {
+            return `
+                <button onclick="showConfirmReset('match')"
+                    class="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-md transition duration-150">
+                    FINALIZAR Y GUARDAR PARTIDO
+                </button>
+            `;
+        }
+
+        // Renderiza la tabla de totales
+        function renderLeaderboard() {
+            const container = document.getElementById('leaderboard-container');
+            const scoresArray = PLAYERS.map(name => ({
+                name: name,
+                score: leaderboardData[name] || 0
+            })).sort((a, b) => b.score - a.score);
+            
+            let html = '';
+            scoresArray.forEach((player, index) => {
+                const rankColor = index === 0 ? 'bg-yellow-100 border-yellow-500' : 
+                                  index === 1 ? 'bg-gray-100 border-gray-400' : 
+                                  index === 2 ? 'bg-amber-100 border-amber-500' : 
+                                  'bg-white border-gray-200';
+                
+                const rankText = index === 0 ? 'text-yellow-700 font-bold' : 
+                                 index === 1 ? 'text-gray-700 font-bold' : 
+                                 index === 2 ? 'text-amber-700 font-bold' : 
+                                 'text-gray-500';
+
+                html += `
+                    <div class="flex items-center justify-between p-3 rounded-xl shadow-sm ${rankColor} border-l-4">
+                        <div class="flex items-center">
+                            <span class="text-xl mr-3 ${rankText}">#${index + 1}</span>
+                            <span class="text-lg font-semibold text-gray-800">${player.name}</span>
+                        </div>
+                        <span class="text-2xl font-extrabold text-green-700">${player.score}</span>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        
+        // --- Modal Control Functions (Custom Alert/Confirm) ---
+        
+        const modalBackdrop = document.getElementById('modal-backdrop');
+        const modalConfirmButton = document.getElementById('modal-confirm-button');
+        const modalTitle = document.getElementById('modal-title');
+        const modalText = document.getElementById('modal-text');
+        const modalCancelButton = document.getElementById('modal-cancel-button');
+
+
+        window.showModal = function(title, htmlContent, onConfirm, isAlert = false) {
+            modalTitle.textContent = title;
+            modalText.innerHTML = htmlContent; // Usar innerHTML para aceptar la tabla
+            modalConfirmButton.onclick = onConfirm;
+            
+            if (isAlert) {
+                 modalConfirmButton.textContent = 'Entendido';
+                 modalConfirmButton.classList.remove('bg-red-600', 'hover:bg-red-700');
+                 modalConfirmButton.classList.add('bg-green-600', 'hover:bg-green-700');
+                 modalConfirmButton.onclick = hideModal;
+                 modalCancelButton.classList.add('hidden');
+            } else {
+                 modalConfirmButton.textContent = 'Confirmar';
+                 modalConfirmButton.classList.remove('bg-green-600', 'hover:bg-green-700');
+                 modalConfirmButton.classList.add('bg-red-600', 'hover:bg-red-700');
+                 modalCancelButton.classList.remove('hidden');
+            }
+
+            modalBackdrop.classList.remove('hidden');
+            modalBackdrop.classList.add('flex');
+            
+            modalBackdrop.onclick = (e) => {
+                if (e.target === modalBackdrop) {
+                    hideModal();
+                }
+            };
+        }
+
+        window.hideModal = function() {
+            modalBackdrop.classList.add('hidden');
+            modalBackdrop.classList.remove('flex');
+            modalConfirmButton.onclick = null;
+            modalBackdrop.onclick = null;
+        }
+        
+        /**
+         * Muestra un mensaje simple usando el modal.
+         */
+        function alertUser(title, text) {
+            window.showModal(title, text, hideModal, true);
+        }
+
+        /**
+         * Muestra el modal de confirmación, incluyendo el resumen de goles.
+         * @param {string} type - 'match' o 'all'.
+         */
+        window.showConfirmReset = function(type) {
+            if (type === 'match') {
+                const totalGoles = matchData.scoreA + matchData.scoreB;
+
+                let summaryHtml = `<p class="mb-4">El marcador final fue: <strong>${matchData.scoreA} - ${matchData.scoreB}</strong>. Se sumarán <strong>${totalGoles} goles</strong> a la tabla general de la siguiente manera:</p>`;
+
+                // Crear la tabla de resumen de goles individuales
+                const goalsSummary = Object.entries(matchData.goalsScored || {})
+                    .filter(([, score]) => score > 0)
+                    .sort(([, scoreA], [, scoreB]) => scoreB - scoreA);
+
+                if (goalsSummary.length > 0) {
+                    summaryHtml += `<div class="bg-gray-100 p-3 rounded-lg border border-gray-200">
+                        <table class="min-w-full text-sm">
+                            <thead>
+                                <tr class="border-b">
+                                    <th class="py-1 text-left text-gray-600">JUGADOR</th>
+                                    <th class="py-1 text-right text-gray-600">GOLES</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+                    
+                    goalsSummary.forEach(([player, score]) => {
+                        summaryHtml += `
+                            <tr class="border-b last:border-b-0">
+                                <td class="py-1 font-semibold">${player}</td>
+                                <td class="py-1 text-right text-green-700 font-extrabold">${score}</td>
+                            </tr>
+                        `;
+                    });
+
+                    summaryHtml += `
+                            </tbody>
+                        </table>
+                    </div>`;
+                } else {
+                     summaryHtml += `<p class="text-red-500 font-bold">¡Advertencia! No se registró ningún gol en el partido. La tabla no se modificará.</p>`;
+                }
+
+                window.showModal(
+                    "Finalizar Partido y Guardar",
+                    summaryHtml,
+                    window.endMatchAndSave
+                );
+            } else if (type === 'all') {
+                 window.showModal(
+                    "Reiniciar TODO",
+                    "<p>¡Advertencia! Esto borrará **TODOS** los totales de la tabla general y reiniciará el partido actual. Esta acción es irreversible. ¿Deseas continuar?</p>",
+                    window.resetAllData
+                );
+            }
+        }
+
+        // Iniciar la aplicación
+        setupFirebase();
+    </script>
+</body>
+</html>
