@@ -545,6 +545,7 @@
                 : 'bg-gray-400 cursor-not-allowed';
             const action = canStart ? 'startMatch()' : '';
 
+            // --- CAMBIO HECHO AQUÍ: Eliminado el texto de aclaración ---
             return `
                 <button onclick="${action}"
                     class="w-full py-3 text-white font-bold rounded-lg shadow-md transition duration-150 ${buttonClass}">
@@ -552,7 +553,7 @@
                 </button>
                 <button onclick="showConfirmReset('all')"
                     class="w-full mt-2 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold rounded-lg transition duration-150">
-                    Reiniciar TODOS los datos.-
+                    Reiniciar TODOS los datos
                 </button>
             `;
         }
@@ -692,6 +693,7 @@
                     window.endMatchAndSave
                 );
             } else if (type === 'all') {
+                 // --- CAMBIO HECHO AQUÍ: El modal ahora solo dice "Reiniciar TODO" ---
                  window.showModal(
                     "Reiniciar TODO",
                     "<p>¡Advertencia! Esto borrará **TODOS** los totales de la tabla general y reiniciará el partido actual. Esta acción es irreversible. ¿Deseas continuar?</p>",
