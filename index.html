@@ -152,21 +152,15 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
-                // NOTA: EL ERROR INDICA QUE FALLA EL INICIO DE SESIÓN.
-                // DEBES VERIFICAR QUE LA AUTENTICACIÓN ANÓNIMA ESTÉ HABILITADA
-                // EN TU PROYECTO FIREBASE (sección Authentication -> Sign-in Method).
-                
                 await signInAnonymously(auth);
 
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
-                        // Usamos el UID real del usuario anónimo para la seguridad de la data
                         userId = user.uid; 
                         listenForData();
                         initializeLeaderboard();
                         initializeCurrentMatch();
                     } else {
-                        // Este path no debería ocurrir después del signInAnonymously
                         userId = crypto.randomUUID(); 
                         document.getElementById('loading-message').textContent = 'Error de autenticación. Recargando...';
                     }
@@ -545,7 +539,6 @@
                 : 'bg-gray-400 cursor-not-allowed';
             const action = canStart ? 'startMatch()' : '';
 
-            // --- CAMBIO HECHO AQUÍ: Eliminado el texto de aclaración ---
             return `
                 <button onclick="${action}"
                     class="w-full py-3 text-white font-bold rounded-lg shadow-md transition duration-150 ${buttonClass}">
@@ -576,14 +569,17 @@
             
             let html = '';
             scoresArray.forEach((player, index) => {
-                const rankColor = index === 0 ? 'bg-yellow-100 border-yellow-500' : 
-                                  index === 1 ? 'bg-gray-100 border-gray-400' : 
-                                  index === 2 ? 'bg-amber-100 border-amber-500' : 
-                                  'bg-white border-gray-200';
+                // *** LÓGICA DE COLOR MODIFICADA PARA REQUERIR PUNTOS > 0 ***
+                const isRanked = player.score > 0; 
+
+                const rankColor = isRanked && index === 0 ? 'bg-yellow-100 border-yellow-500' : 
+                                  isRanked && index === 1 ? 'bg-gray-100 border-gray-400' : 
+                                  isRanked && index === 2 ? 'bg-amber-100 border-amber-500' : 
+                                  'bg-white border-gray-200'; // Color neutral si el puntaje es 0
                 
-                const rankText = index === 0 ? 'text-yellow-700 font-bold' : 
-                                 index === 1 ? 'text-gray-700 font-bold' : 
-                                 index === 2 ? 'text-amber-700 font-bold' : 
+                const rankText = isRanked && index === 0 ? 'text-yellow-700 font-bold' : 
+                                 isRanked && index === 1 ? 'text-gray-700 font-bold' : 
+                                 isRanked && index === 2 ? 'text-amber-700 font-bold' : 
                                  'text-gray-500';
 
                 html += `
@@ -693,7 +689,6 @@
                     window.endMatchAndSave
                 );
             } else if (type === 'all') {
-                 // --- CAMBIO HECHO AQUÍ: El modal ahora solo dice "Reiniciar TODO" ---
                  window.showModal(
                     "Reiniciar TODO",
                     "<p>¡Advertencia! Esto borrará **TODOS** los totales de la tabla general y reiniciará el partido actual. Esta acción es irreversible. ¿Deseas continuar?</p>",
